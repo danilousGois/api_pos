@@ -1,66 +1,82 @@
 import express from 'express'
 import { PrismaClient } from '@prisma/client'
 
-
+const app = express()
 const prisma = new PrismaClient()
 
-const app = express()
 app.use(express.json())
 
+// Middleware de tratamento de erros genérico
+function tratarErros(err, req, res, next) {
+    console.error(err)
+    res.status(500).json({ message: 'Erro interno do servidor', erro: err.message })
+}
 
-app.get('/mensagem', async (req, res) => {
+// GET - Listar mensagens
+app.get('/mensagem', async (req, res, next) => {
     try {
         const mensagens = await prisma.mensagem.findMany()
         res.status(200).json(mensagens)
-    } catch (error) {
-        res.status(500).json({ message: 'Erro ao buscar mensagens', error: error.message })
+    } catch (err) {
+        next(err)
     }
 })
 
+// POST - Criar mensagem
+app.post('/mensagem', async (req, res, next) => {
+    const { conteudo } = req.body
 
-app.post('/mensagem', async (req, res) => {
+    if (!conteudo) {
+        return res.status(400).json({ message: 'Conteúdo é obrigatório' })
+    }
+
     try {
-        const mensagem = await prisma.mensagem.create({
-            data: {
-                conteudo: req.body.conteudo
-            }
-        })
-        res.status(201).json(mensagem)
-    } catch (error) {
-        res.status(500).json({ message: 'Erro ao criar mensagem', error: error.message })
+        const novaMensagem = await prisma.mensagem.create({ data: { conteudo } })
+        res.status(201).json(novaMensagem)
+    } catch (err) {
+        next(err)
     }
 })
 
+// PUT - Atualizar mensagem
+app.put('/mensagem/:id', async (req, res, next) => {
+    const id = parseInt(req.params.id)
+    const { conteudo } = req.body
 
-app.put('/mensagem/:id', async (req, res) => {
+    if (isNaN(id) || !conteudo) {
+        return res.status(400).json({ message: 'ID inválido ou conteúdo ausente' })
+    }
+
     try {
         const mensagem = await prisma.mensagem.update({
-            where: {
-                id: parseInt(req.params.id)
-            },
-            data: {
-                conteudo: req.body.conteudo
-            }
+            where: { id },
+            data: { conteudo }
         })
         res.status(200).json(mensagem)
-    } catch (error) {
-        res.status(500).json({ message: 'Erro ao atualizar mensagem', error: error.message })
+    } catch (err) {
+        next(err)
     }
 })
 
+// DELETE - Deletar mensagem
+app.delete('/mensagem/:id', async (req, res, next) => {
+    const id = parseInt(req.params.id)
 
-app.delete('/mensagem/:id', async (req, res) => {
+    if (isNaN(id)) {
+        return res.status(400).json({ message: 'ID inválido' })
+    }
+
     try {
-        await prisma.mensagem.delete({
-            where: {
-                id: parseInt(req.params.id)
-            }
-        })
+        await prisma.mensagem.delete({ where: { id } })
         res.status(200).json({ message: 'Mensagem deletada' })
-    } catch (error) {
-        res.status(500).json({ message: 'Erro ao deletar mensagem', error: error.message })
+    } catch (err) {
+        next(err)
     }
 })
 
+// Middleware final de erros
+app.use(tratarErros)
 
-app.listen(3000)
+app.listen(3000, () => {
+    console.log('Servidor rodando na porta 3000')
+})

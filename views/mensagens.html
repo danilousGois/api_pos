@@ -1,67 +1,92 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Mensagens</title>
+  <style>
+    .erro { color: red; }
+    .mensagem { border: 1px solid #ccc; padding: 10px; margin-bottom: 8px; }
+  </style>
 </head>
 <body>
-  <h2>Mensagens</h2>
+  <h1>Mensagens</h1>
 
-  <form id="mensagemForm">
-    <input type="text" name="conteudo" placeholder="Digite uma mensagem" required>
+  <form id="formMensagem">
+    <textarea id="conteudo" placeholder="Escreva sua mensagem" required></textarea><br>
     <button type="submit">Enviar</button>
+    <div id="erro-msg" class="erro"></div>
   </form>
 
-  <button onclick="carregarMensagens()">Atualizar Lista</button>
-  <ul id="listaMensagens"></ul>
+  <hr>
+
+  <div id="lista-mensagens"></div>
 
   <script>
     const token = localStorage.getItem('token');
     if (!token) {
-      alert('Você precisa estar logado!');
-      window.location.href = 'login.html';
+      alert('Você precisa estar logado.');
+      window.location.href = '/login';
     }
 
-    document.getElementById('mensagemForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const form = e.target;
-      const res = await fetch('/mensagens', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ conteudo: form.conteudo.value })
-      });
-      const data = await res.json();
-      form.reset();
-      carregarMensagens();
-    });
+    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
     async function carregarMensagens() {
-      const res = await fetch('/mensagens', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const mensagens = await res.json();
-      const ul = document.getElementById('listaMensagens');
-      ul.innerHTML = '';
+      const res = await fetch('/mensagens', { headers });
+      const data = await res.json();
+      const lista = document.getElementById('lista-mensagens');
+      lista.innerHTML = '';
 
-      mensagens.forEach(msg => {
-        const li = document.createElement('li');
-        li.innerHTML = `
-          <strong>${msg.usuario?.nome || 'Anônimo'}:</strong> 
-          ${msg.conteudo}
-          <button onclick="removerMensagem(${msg.id})">X</button>
-        `;
-        ul.appendChild(li);
-      });
+      if (Array.isArray(data)) {
+        data.forEach(msg => {
+          const div = document.createElement('div');
+          div.className = 'mensagem';
+          div.innerHTML = `
+            <p>${msg.conteudo}</p>
+            <small>${new Date(msg.dataHora).toLocaleString()}</small><br>
+            <button onclick="editar(${msg.id_mensagem}, '${msg.conteudo.replace(/'/g, "\\'")}')">Editar</button>
+            <button onclick="excluir(${msg.id_mensagem})">Excluir</button>
+          `;
+          lista.appendChild(div);
+        });
+      }
     }
 
-    async function removerMensagem(id) {
-      if (confirm('Remover esta mensagem?')) {
+    document.getElementById('formMensagem').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const conteudo = document.getElementById('conteudo').value;
+      const erroMsg = document.getElementById('erro-msg');
+      erroMsg.textContent = '';
+
+      const res = await fetch('/mensagens', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ conteudo })
+      });
+
+      if (res.ok) {
+        document.getElementById('conteudo').value = '';
+        carregarMensagens();
+      } else {
+        const data = await res.json();
+        erroMsg.textContent = data.erro || 'Erro ao enviar mensagem';
+      }
+    });
+
+    async function excluir(id) {
+      await fetch(`/mensagens/${id}`, {
+        method: 'DELETE',
+        headers
+      });
+      carregarMensagens();
+    }
+
+    async function editar(id, antigoConteudo) {
+      const novo = prompt('Novo conteúdo:', antigoConteudo);
+      if (novo && novo.trim()) {
         await fetch(`/mensagens/${id}`, {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({ conteudo: novo })
         });
         carregarMensagens();
       }

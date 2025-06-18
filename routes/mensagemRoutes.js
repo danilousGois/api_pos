@@ -1,98 +1,99 @@
 import express from 'express';
 import prisma from '../prisma.js';
 import jwt from 'jsonwebtoken';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 const router = express.Router();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
+// Middleware de autenticação via token JWT
 function autenticarToken(req, res, next) {
-  const authHeader = req.headers['authorization'] || req.cookies.token;
+  const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
-  if (!token) return res.redirect('/login');
+  if (!token) return res.status(401).json({ erro: 'Token não fornecido' });
 
   jwt.verify(token, process.env.JWT_SECRET, (err, usuario) => {
-    if (err) return res.redirect('/login');
+    if (err) return res.status(403).json({ erro: 'Token inválido' });
     req.usuario = usuario;
     next();
   });
 }
 
+// GET /mensagens - listar mensagens do usuário autenticado
 router.get('/', autenticarToken, async (req, res) => {
   try {
     const mensagens = await prisma.mensagem.findMany({
       where: { id_user: req.usuario.id },
       orderBy: { dataHora: 'desc' },
     });
-    res.render('mensagens', { mensagens });
+    res.json(mensagens);
   } catch (err) {
     console.error(err);
-    res.status(500).send('Erro ao buscar mensagens');
+    res.status(500).json({ erro: 'Erro ao buscar mensagens' });
   }
 });
 
+// POST /mensagens - criar nova mensagem
 router.post('/', autenticarToken, async (req, res) => {
   const { conteudo } = req.body;
   if (!conteudo || conteudo.trim() === '') {
-    return res.render('mensagens', { erro: 'Conteúdo obrigatório', mensagens: [] });
+    return res.status(400).json({ erro: 'Conteúdo obrigatório' });
   }
 
   try {
-    await prisma.mensagem.create({
+    const nova = await prisma.mensagem.create({
       data: {
         conteudo,
         id_user: req.usuario.id,
       },
     });
-    res.redirect('/mensagens');
+    res.status(201).json(nova);
   } catch (err) {
     console.error(err);
-    res.status(500).send('Erro ao criar mensagem');
+    res.status(500).json({ erro: 'Erro ao criar mensagem' });
   }
 });
 
-router.post('/editar/:id', autenticarToken, async (req, res) => {
+// PUT /mensagens/:id - editar mensagem existente
+router.put('/:id', autenticarToken, async (req, res) => {
   const { conteudo } = req.body;
   const id = parseInt(req.params.id);
 
   if (!conteudo || conteudo.trim() === '') {
-    return res.redirect('/mensagens');
+    return res.status(400).json({ erro: 'Conteúdo obrigatório' });
   }
 
   try {
-    const existente = await prisma.mensagem.findUnique({ where: { id_mensagem: id } });
-    if (!existente || existente.id_user !== req.usuario.id) {
-      return res.redirect('/mensagens');
+    const mensagem = await prisma.mensagem.findUnique({ where: { id_mensagem: id } });
+    if (!mensagem || mensagem.id_user !== req.usuario.id) {
+      return res.status(404).json({ erro: 'Mensagem não encontrada ou não pertence a você' });
     }
 
-    await prisma.mensagem.update({
+    const atualizada = await prisma.mensagem.update({
       where: { id_mensagem: id },
       data: { conteudo },
     });
 
-    res.redirect('/mensagens');
+    res.json(atualizada);
   } catch (err) {
     console.error(err);
-    res.status(500).send('Erro ao atualizar mensagem');
+    res.status(500).json({ erro: 'Erro ao atualizar mensagem' });
   }
 });
 
-router.post('/excluir/:id', autenticarToken, async (req, res) => {
+// DELETE /mensagens/:id - excluir mensagem
+router.delete('/:id', autenticarToken, async (req, res) => {
   const id = parseInt(req.params.id);
+
   try {
-    const existente = await prisma.mensagem.findUnique({ where: { id_mensagem: id } });
-    if (!existente || existente.id_user !== req.usuario.id) {
-      return res.redirect('/mensagens');
+    const mensagem = await prisma.mensagem.findUnique({ where: { id_mensagem: id } });
+    if (!mensagem || mensagem.id_user !== req.usuario.id) {
+      return res.status(404).json({ erro: 'Mensagem não encontrada ou não pertence a você' });
     }
 
     await prisma.mensagem.delete({ where: { id_mensagem: id } });
-    res.redirect('/mensagens');
+    res.status(204).end();
   } catch (err) {
     console.error(err);
-    res.status(500).send('Erro ao excluir mensagem');
+    res.status(500).json({ erro: 'Erro ao excluir mensagem' });
   }
 });
 
